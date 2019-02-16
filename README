@@ -1,0 +1,15 @@
+Source:
+    #1: split-bootimage
+        https://github.com/mpersano/bootimg-tools/blob/master/split-bootimage.py
+    #2: mkbootfs
+        https://github.com/osm0sis/mkbootfs
+    #3: mkbootimg
+        https://github.com/osm0sis/mkbootimg
+
+Credits:
+    Many thanks to the authors above for the great work!
+    I just do some little modification to their codes
+    to complete my goals.
+
+by bugnofree 2017-05-12
+

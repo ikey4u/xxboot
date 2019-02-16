@@ -1,0 +1,100 @@
+#! /bin/bash
+
+#Source:
+#    #1: split-bootimage
+#        https://github.com/mpersano/bootimg-tools/blob/master/split-bootimage.py
+#    #2: mkbootfs
+#        https://github.com/osm0sis/mkbootfs
+#    #3: mkbootimg
+#        https://github.com/osm0sis/mkbootimg
+#
+#Credits:
+#    Many thanks to the authors above for the great work!
+#    I just do some little modification to their codes
+#    to complete my goals.
+#
+#by bugnofree 2017-05-12
+
+
+if [[ $# -ne 1 ]];then
+    echo Usage:$0 filename.img
+    exit 1
+fi
+
+BOOTIMG=$(realpath $1)
+#echo $BOOTIMG
+ROOTPATH=$PWD
+echo "$ROOTPATH"
+
+if [[ -d "$ROOTPATH/bin" ]];then
+    rm -rf "$ROOTPATH/bin"
+fi
+mkdir $ROOTPATH/bin
+echo \#1: ----------Compile binary tools----------
+echo Compile mkbootfs ...
+cd $ROOTPATH/src/mkbootfs && make > /dev/null && mv mkbootfs $ROOTPATH/bin/ &&  \
+    make clean > /dev/null && cd $ROOTPATH
+echo Done!
+echo Compile mkbootimg and unpackbootimg ...
+cd $ROOTPATH/src/mkbootimg && make > /dev/null && \
+    mv mkbootimg unpackbootimg $ROOTPATH/bin/ && make clean > /dev/null && \
+    cd $ROOTPATH
+echo Done!
+
+if [[ ! -f "$ROOTPATH/bin/mkbootfs" && ! -f "$ROOTPATH/bin/mkbootimg" && ! -f "$ROOTPATH/bin/unpackbootimg" ]];then
+    echo "Binary tools compile failed! Please try agagin!"
+    exit 1
+fi
+
+echo \#2: ----------Unpack boot image and ramdisk----------
+mkbootfs=$ROOTPATH/bin/mkbootfs
+mkbootimg=$ROOTPATH/bin/mkbootimg
+unpackbootimg=$ROOTPATH/bin/unpackbootimg
+splitboot="python2 $ROOTPATH/src/split_bootimage.py"
+$splitboot $BOOTIMG
+RAMDISK=$ROOTPATH/ramdisk-unpacked
+if [[ -d $RAMDISK ]];then
+    rm -r $RAMDISK
+fi
+mkdir $RAMDISK && cd $RAMDISK
+gzip -dc $ROOTPATH/boot-ramdisk.gz | cpio -i --quiet
+
+echo \#3: ----------Setup ro.debuggable + ro.secure and repack ramdisk----------
+sed -i 's/^ro\.secure=.*/ro\.secure=0/' default.prop
+sed -i 's/^ro\.debuggable=.*/ro\.debuggable=1/' default.prop
+$mkbootfs $RAMDISK | gzip > $ROOTPATH/debuggable-ramdisk.img
+cd $ROOTPATH
+echo "Done!"
+
+echo \#4: ----------Repack the boot image----------
+CMDLINE=$($unpackbootimg -f $BOOTIMG | grep BOARD_KERNEL_CMDLINE | cut -f1 -d' ' --complement)
+#echo CMDLINE=$CMDLINE
+BASE=$($unpackbootimg -f $BOOTIMG | grep BOARD_KERNEL_BASE | cut -f2 -d' ')
+#echo BASE=$BASE
+RAMDISK_OFFSET=$($unpackbootimg -f $BOOTIMG | grep BOARD_RAMDISK_OFFSET | cut -f2 -d' ')
+#echo RAMDISK_OFFSET=$RAMDISK_OFFSET
+SECOND_OFFSET=$($unpackbootimg -f $BOOTIMG | grep BOARD_SECOND_OFFSET | cut -f2 -d' ')
+#echo SECOND_OFFSET=$SECOND_OFFSET
+TAGS_OFFSET=$($unpackbootimg -f $BOOTIMG | grep BOARD_TAGS_OFFSET | cut -f2 -d' ')
+#echo TAGS_OFFSET=$TAGS_OFFSET
+$mkbootimg --base 0x$BASE  --ramdisk_offset 0x$RAMDISK_OFFSET  --second_offset \
+    0x$SECOND_OFFSET  --tags_offset 0x$TAGS_OFFSET  --cmdline "$CMDLINE" \
+    --kernel $ROOTPATH/boot-kernel --ramdisk $ROOTPATH/debuggable-ramdisk.img \
+    -o $ROOTPATH/debuggable-boot.img
+echo "Done!"
+
+echo \#5: ----------Clean the trash----------
+rm $ROOTPATH/boot-kernel
+rm $ROOTPATH/boot-ramdisk.gz
+rm $ROOTPATH/debuggable-ramdisk.img
+rm -r $ROOTPATH/bin/
+rm -r $RAMDISK
+echo "Done!"
+echo && echo "Those fucking tedious works have been done!" && echo
+echo "Your fastboot path is put on the following,run fastboot command with root privilege:"
+printf "    %s\n" "$(which fastboot)"
+echo "Some useful commands for you :"
+printf "    %s\n" "adb reboot bootloader"
+printf "    %s\n" "sudo $(which fastboot) flash boot $ROOTPATH/debuggable-boot.img"
+printf "    %s\n" "sudo $(which fastboot) reboot"
+
