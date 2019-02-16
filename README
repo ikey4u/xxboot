@@ -5,6 +5,8 @@ Source:
         https://github.com/osm0sis/mkbootfs
     #3: mkbootimg
         https://github.com/osm0sis/mkbootimg
+    #4: bootimg
+        https://github.com/liudongmiao/bootimg
 
 Credits:
     Many thanks to the authors above for the great work!
